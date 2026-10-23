@@ -101,6 +101,13 @@ def normalize(rows) -> pd.DataFrame:
     return df.dropna(subset=["lat", "lon"])
 
 
+def build_adong_biz_counts(stores: pd.DataFrame) -> pd.DataFrame:
+    """행정동 × 업종중분류 점포수(롱 포맷) — 추천 집계용 소형 인덱스."""
+    g = (stores.groupby(["adong_cd", "biz_mcls"]).size()
+         .reset_index(name="count"))
+    return g[g["adong_cd"].astype(str).str.len() > 0]
+
+
 def build_adong_features(stores: pd.DataFrame) -> pd.DataFrame:
     """행정동별 피처: 점포수·업종다양성·대표업종·중심좌표 + 업종중분류 구성비."""
     out = []
@@ -123,27 +130,40 @@ def build_adong_features(stores: pd.DataFrame) -> pd.DataFrame:
 
 
 # --- 빌드 ---------------------------------------------------------------
-def build_full(service_key, since="20100101", out_dir=INDEX_DIR, verbose=True):
+def build_full(service_key, out_dir=INDEX_DIR, resume=True, verbose=True):
+    """전국 전체 빌드: 업종대분류별 전국 수집 → 소형 쿼리 인덱스 저장.
+
+    업종별 중간 저장(stores_<code>.csv.gz)으로 재개 가능. 끊겨 재실행하면
+    이미 받은 업종은 건너뜀. 최종 산출은 git 에 올릴 소형 파일 2개 + meta.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     cats = fetch_large_upjong(service_key)
     frames = []
     for code, name in cats:
-        rows = fetch_by_upjong(service_key, code, verbose=verbose)
-        df = normalize(rows)
-        df.to_csv(out / f"stores_{code}.csv.gz", index=False, compression="gzip")  # 체크포인트
+        cp = out / f"stores_{code}.csv.gz"
+        if resume and cp.exists():
+            df = pd.read_csv(cp, dtype={"adong_cd": str})
+            if verbose:
+                print(f"  [{code}] {name}: 체크포인트 재사용 {len(df):,}")
+        else:
+            rows = fetch_by_upjong(service_key, code, verbose=verbose)
+            df = normalize(rows)
+            df.to_csv(cp, index=False, compression="gzip")
+            if verbose:
+                print(f"  [{code}] {name}: {len(df):,}")
         frames.append(df)
-        if verbose:
-            print(f"  [{code}] {name}: {len(df):,}")
+
     allstores = pd.concat(frames, ignore_index=True).drop_duplicates("store_id")
-    allstores.to_csv(out / "stores_all.csv.gz", index=False, compression="gzip")
     feats = build_adong_features(allstores)
+    counts = build_adong_biz_counts(allstores)
     feats.to_csv(out / "adong_features.csv.gz", index=False, compression="gzip")
+    counts.to_csv(out / "adong_biz_counts.csv.gz", index=False, compression="gzip")
     (out / "meta.json").write_text(json.dumps({
         "built_at": pd.Timestamp.now().isoformat(),
-        "since": since,
         "n_stores": int(len(allstores)),
         "n_adong": int(feats.shape[0]),
+        "source": "소상공인 상가(상권)정보 storeListInUpjong",
     }, ensure_ascii=False, indent=2))
     if verbose:
         print(f"\n완료: 상가 {len(allstores):,} / 행정동 {len(feats):,}")

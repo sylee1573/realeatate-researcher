@@ -4,6 +4,12 @@
 # 데이터(민감정보 가능) — 로컬에서만 보관
 data/*
 !data/.gitkeep
+# 전국 인덱스: 대용량 원천(stores_*)은 제외, 소형 쿼리 인덱스만 커밋
+!data/index/
+data/index/*
+!data/index/adong_features.csv.gz
+!data/index/adong_biz_counts.csv.gz
+!data/index/meta.json
 
 # python
 __pycache__/
