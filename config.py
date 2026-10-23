@@ -38,4 +38,4 @@ SGIS_CONSUMER_SECRET = os.getenv("SGIS_CONSUMER_SECRET") or None
 # --- 공공데이터 API 베이스 URL ------------------------------------------
 SANGGA_BASE = "http://apis.data.go.kr/B553077/api/open/sdsc2"
 LOCALDATA_BASE = "http://www.localdata.go.kr/platform/rest/GR0/openDataApi"
-SGIS_BASE = "https://sgisapi.kostat.go.kr/OpenAPI3"
+SGIS_BASE = "https://sgisapi.mods.go.kr/OpenAPI3"  # 구 sgisapi.kostat.go.kr 에서 이전됨

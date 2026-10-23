@@ -16,7 +16,7 @@ import requests
 
 _CA = "/root/.ccr/ca-bundle.crt"
 VERIFY = _CA if os.path.exists(_CA) else True
-BASE = "https://sgisapi.kostat.go.kr/OpenAPI3"
+BASE = "https://sgisapi.mods.go.kr/OpenAPI3"  # 구 sgisapi.kostat.go.kr 에서 이전됨
 
 names = sorted([k for k in os.environ if "SGIS" in k.upper()])
 print("■ 환경변수 중 'SGIS' 포함 이름:", names or "(없음)")
