@@ -59,6 +59,16 @@ def main():
     transit = sources.load_transit(use_synthetic=True)
     print(f"      상가 {len(stores):,} / 인구격자 {len(population):,} / 교통결절 {len(transit):,}")
 
+    # 데이터 출처 표기(합성 vs 실데이터) — 어느 소스가 실제인지 분명히 알려줌
+    syn_stores = args.demo or config.SANGGA_SERVICE_KEY is None
+    syn_pop = args.demo or config.SGIS_CONSUMER_KEY is None
+    geo_real = bool(args.address)
+    print("      [출처] 상가={} · 인구={} · 교통=합성 · 지오코딩={}".format(
+        "합성" if syn_stores else "실데이터(소상공인)",
+        "합성" if syn_pop else "실데이터(SGIS)",
+        "실데이터(카카오)" if geo_real else "해당없음",
+    ))
+
     # 후보 입지 = 기존 상가 위치(샘플링). 실무에선 격자/필지로 확장 가능.
     sample = stores.sample(min(args.max_sites, len(stores)), random_state=0)
     sites = sample[["store_id", "lat", "lon"]].rename(columns={"store_id": "site_id"})
@@ -76,6 +86,14 @@ def main():
     for c in ["pop_total", "store_density", "biz_diversity", "transit_access", "income_idx"]:
         print(f"  - {c:16s}: {my_feats[c]:,.2f}")
 
+    # 반경 내 데이터가 전무하면(좌표가 데이터 범위 밖) 분명히 경고
+    if my_feats["pop_total"] == 0 and my_feats["store_density"] == 0:
+        print("\n⚠ 이 좌표 반경 내에 상가·인구 데이터가 없습니다.")
+        if syn_stores:
+            print("  합성 데이터는 '서울시청 중심'이라, 멀리 떨어진 실제 주소는 0으로 나옵니다.")
+            print("  → 실제 추천을 보려면 소상공인 상가정보/SGIS 실데이터 연동이 필요합니다")
+            print("    (현재 상가·인구 소스는 stub). 데모 확인은 서울시청 인근 좌표로 하세요.")
+
     print(f"\n=== 유사 입지 Top {len(neighbors)} ===")
     print(neighbors.to_string(index=False))
 
@@ -86,7 +104,9 @@ def main():
     print(rec.to_string(index=False))
     print("\n컬럼: score=종합점수 / n_stores=이웃입지 표본 점포수 /",
           "survival_rate=현존비율(%) / avg_months=평균영업개월 / my_count=내 반경 기존점포수")
-    print("\n※ 데모는 합성 데이터입니다. 실데이터는 .env 키 설정 후 --demo 없이 실행하세요.")
+    if syn_stores or syn_pop:
+        print("\n※ 상가/인구는 아직 합성 데이터입니다. 지오코딩만 실데이터입니다.")
+        print("  실제 추천은 소상공인 상가정보(SANGGA_SERVICE_KEY)·SGIS 연동 후 가능합니다.")
 
 
 if __name__ == "__main__":
