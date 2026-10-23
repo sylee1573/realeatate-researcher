@@ -1,0 +1,10 @@
+# MVP 1단계 의존성 (최소 구성)
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
+requests>=2.31
+python-dotenv>=1.0
+
+# 선택: 지도 시각화 (MVP 검증엔 불필요, 2단계에서)
+# folium>=0.15
+# geopandas>=0.14

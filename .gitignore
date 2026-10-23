@@ -1,0 +1,13 @@
+# 비밀키 — 절대 커밋 금지
+.env
+
+# 데이터(민감정보 가능) — 로컬에서만 보관
+data/*
+!data/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
