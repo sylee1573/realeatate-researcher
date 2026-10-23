@@ -30,6 +30,8 @@ from src.features.build_features import site_features
 def parse_args():
     p = argparse.ArgumentParser(description="유사입지 기반 상가 활용 추천 MVP")
     p.add_argument("--demo", action="store_true", help="합성 데이터로 실행(키 불필요)")
+    p.add_argument("--address", type=str, default=None,
+                   help="내 상가 주소(실데이터). 지정 시 지오코딩으로 lat/lon 자동 설정")
     p.add_argument("--lat", type=float, default=37.5665, help="내 상가 위도")
     p.add_argument("--lon", type=float, default=126.9780, help="내 상가 경도")
     p.add_argument("--radius", type=int, default=config.ANALYSIS_RADIUS_M, help="분석 반경(m)")
@@ -43,6 +45,13 @@ def parse_args():
 def main():
     args = parse_args()
     use_syn = True if args.demo else None
+
+    # 주소가 주어지면 지오코딩으로 좌표 변환 (실데이터 경로)
+    if args.address:
+        from src.utils.geocode import geocode
+
+        args.lat, args.lon = geocode(args.address)
+        print(f"[0/4] 주소 '{args.address}' → ({args.lat:.5f}, {args.lon:.5f})")
 
     print(f"[1/4] 데이터 수집 (radius={args.radius}m) ...")
     stores = sources.load_stores(args.lat, args.lon, args.radius, use_synthetic=use_syn)

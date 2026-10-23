@@ -120,6 +120,16 @@
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  .pick { font-size: 12.5px; color: var(--muted); margin: 0 0 9px; line-height: 1.55; }
+  .pick b { color: var(--fg); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip {
+    font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  #map { cursor: crosshair; }
+
   .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .tile {
     background: var(--surface-2); border-radius: 9px; padding: 10px 11px;
@@ -168,10 +178,12 @@
     <div>
       <div class="card">
         <h2>입력 조건</h2>
+        <p class="pick">📍 <b>지도를 클릭</b>해 내 상가 위치를 찍거나, 아래 대표 위치를 고르세요. 좌표는 자동으로 채워집니다.</p>
+        <div class="chips" id="presets"></div>
         <div class="row2">
-          <label class="field"><span class="lab">위도 (lat)</span>
+          <label class="field"><span class="lab">위도 (자동)</span>
             <input type="number" id="lat" value="37.5665" step="0.0005"></label>
-          <label class="field"><span class="lab">경도 (lon)</span>
+          <label class="field"><span class="lab">경도 (자동)</span>
             <input type="number" id="lon" value="126.9780" step="0.0005"></label>
         </div>
         <label class="field"><span class="lab">분석 반경 <span class="rangeval" id="radiusv">500 m</span></span>
@@ -405,7 +417,7 @@ function recommend(targetLat, targetLon, neighbors, stores, radiusKm, topN) {
 // ============================================================
 //  상태 + 렌더
 // ============================================================
-let SEED = 42, DATA = null;
+let SEED = 42, DATA = null, MAP = null;
 const $ = id => document.getElementById(id);
 const cssv = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -418,7 +430,38 @@ function buildData() {
   const idx = stores.map((_,i)=>i);
   for (let i=idx.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
   const sampleIdx = idx.slice(0, Math.min(420, stores.length));
-  DATA = { stores, pop, transit, sampleIdx };
+
+  // 대표 위치(주소 없이 고르도록 데이터에서 자동 추출)
+  const hubSample = idx.slice(0, 220).map(i => stores[i]);
+  let hub = hubSample[0], hubN = -1;
+  for (const s of hubSample) {
+    let c = 0; for (const t of stores) if (hav(s.lat,s.lon,t.lat,t.lon) <= 0.3) c++;
+    if (c > hubN) { hubN = c; hub = s; }
+  }
+  const topTransit = transit.reduce((a,b)=> b.riders>a.riders ? b : a, transit[0]);
+  let out = stores[0], outD = -1;
+  for (const s of stores) { const d = hav(CENTER[0],CENTER[1],s.lat,s.lon); if (d>outD){outD=d;out=s;} }
+  const presets = [
+    { name:"🏙 번화가(상가밀집)", lat:hub.lat, lon:hub.lon },
+    { name:"🚇 역세권", lat:topTransit.lat, lon:topTransit.lon },
+    { name:"🏡 외곽 주거지", lat:out.lat, lon:out.lon },
+  ];
+  DATA = { stores, pop, transit, sampleIdx, presets };
+}
+
+function renderPresets() {
+  $("presets").innerHTML = DATA.presets
+    .map((p,i)=>`<button class="chip" data-i="${i}">${p.name}</button>`).join("");
+  $("presets").querySelectorAll(".chip").forEach(b =>
+    b.addEventListener("click", () => {
+      const p = DATA.presets[+b.dataset.i]; setLocation(p.lat, p.lon);
+    }));
+}
+
+function setLocation(lat, lon) {
+  $("lat").value = lat.toFixed(5);
+  $("lon").value = lon.toFixed(5);
+  analyze();
 }
 
 function analyze() {
@@ -487,11 +530,13 @@ function drawMap(lat, lon, stores, neighbors) {
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,W,H);
 
-  const lats = stores.map(s=>s.lat).concat(lat);
-  const lons = stores.map(s=>s.lon).concat(lon);
+  // 축척은 상가 분포로 고정(타깃 이동에도 지도가 흔들리지 않게 → 클릭 좌표 안정)
+  const lats = stores.map(s=>s.lat);
+  const lons = stores.map(s=>s.lon);
   const pad = 18;
   const x = d3.scaleLinear().domain([Math.min(...lons),Math.max(...lons)]).range([pad, W-pad]);
   const y = d3.scaleLinear().domain([Math.min(...lats),Math.max(...lats)]).range([H-pad, pad]);
+  MAP = { x, y };  // 클릭→좌표 역변환용
 
   // 상가 점
   for (const s of stores) {
@@ -518,9 +563,17 @@ $("radius").addEventListener("input", e => $("radiusv").textContent = e.target.v
 $("k").addEventListener("input", e => $("kv").textContent = e.target.value);
 $("top").addEventListener("input", e => $("topv").textContent = e.target.value);
 $("run").addEventListener("click", analyze);
-$("reseed").addEventListener("click", () => { SEED = Math.floor(Math.random()*1e6); buildData(); analyze(); });
+$("reseed").addEventListener("click", () => { SEED = Math.floor(Math.random()*1e6); buildData(); renderPresets(); analyze(); });
+$("map").addEventListener("click", e => {
+  if (!MAP) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const lon = MAP.x.invert(e.clientX - r.left);
+  const lat = MAP.y.invert(e.clientY - r.top);
+  setLocation(lat, lon);
+});
 window.addEventListener("resize", () => { if (DATA) analyze(); });
 
 buildData();
+renderPresets();
 analyze();
 </script>
