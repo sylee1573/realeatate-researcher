@@ -25,8 +25,8 @@ if not cats:
     sys.exit(1)
 
 code, name = cats[0]
-print(f"\n■ storeListByDate 소량 테스트 (업종 {code}/{name}, 2페이지)")
-rows = bi.fetch_by_date(key, since="20100101", inds_lcls=code, max_pages=2, verbose=True)
+print(f"\n■ storeListInUpjong 소량 테스트 (업종 {code}/{name}, 2페이지)")
+rows = bi.fetch_by_upjong(key, code, max_pages=2, verbose=True)
 print(f"  수집 rows={len(rows)}")
 if rows:
     print(f"  첫 레코드 키: {sorted(rows[0].keys())}")

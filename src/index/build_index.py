@@ -37,15 +37,12 @@ def fetch_large_upjong(service_key) -> list[tuple[str, str]]:
     return [(it.get("indsLclsCd"), it.get("indsLclsNm")) for it in items]
 
 
-def fetch_by_date(service_key, since="20100101", inds_lcls=None,
-                  max_pages=100000, sleep=0.1, verbose=False) -> list[dict]:
-    """수정일자 >= since 인 상가를 페이지네이션으로 수집(업종대분류 필터 가능)."""
-    url = f"{config.SANGGA_BASE}/storeListByDate"
+def _paginate(url, service_key, base_params, max_pages=100000, sleep=0.1,
+              verbose=False, label="") -> list[dict]:
+    """공통 페이지네이션: totalCount 소진 또는 빈 페이지까지."""
     rows, page = [], 1
     while page <= max_pages:
-        params = {"key": since, "type": "json", "numOfRows": 1000, "pageNo": page}
-        if inds_lcls:
-            params["indsLclsCd"] = inds_lcls
+        params = dict(base_params, type="json", numOfRows=1000, pageNo=page)
         r = _get_with_key(url, service_key, params, timeout=60, verify=_verify())
         r.raise_for_status()
         body = r.json().get("body", {}) or {}
@@ -55,12 +52,32 @@ def fetch_by_date(service_key, since="20100101", inds_lcls=None,
         rows.extend(items)
         total = int(body.get("totalCount", 0) or 0)
         if verbose:
-            print(f"    page {page}: +{len(items)} (누적 {len(rows):,}/{total:,})")
+            print(f"    {label} page{page}: +{len(items)} (누적 {len(rows):,}/{total:,})")
         if page * 1000 >= total:
             break
         page += 1
         time.sleep(sleep)
     return rows
+
+
+def fetch_by_upjong(service_key, inds_lcls_cd, **kw) -> list[dict]:
+    """업종별 상가업소 조회(storeListInUpjong): 한 업종대분류의 전국 상가.
+
+    전체 빌드의 enumeration 수단. divId=indsLclsCd, key=대분류코드(예 'M1').
+    """
+    url = f"{config.SANGGA_BASE}/storeListInUpjong"
+    return _paginate(url, service_key,
+                     {"divId": "indsLclsCd", "key": inds_lcls_cd},
+                     label=inds_lcls_cd, **kw)
+
+
+def fetch_by_date(service_key, since, inds_lcls=None, **kw) -> list[dict]:
+    """수정일자기준 조회(storeListByDate): 증분 갱신용(최근 날짜 since 권장)."""
+    url = f"{config.SANGGA_BASE}/storeListByDate"
+    base = {"key": since}
+    if inds_lcls:
+        base["indsLclsCd"] = inds_lcls
+    return _paginate(url, service_key, base, label="date", **kw)
 
 
 # --- 정규화 & 피처 ------------------------------------------------------
@@ -112,7 +129,7 @@ def build_full(service_key, since="20100101", out_dir=INDEX_DIR, verbose=True):
     cats = fetch_large_upjong(service_key)
     frames = []
     for code, name in cats:
-        rows = fetch_by_date(service_key, since=since, inds_lcls=code, verbose=verbose)
+        rows = fetch_by_upjong(service_key, code, verbose=verbose)
         df = normalize(rows)
         df.to_csv(out / f"stores_{code}.csv.gz", index=False, compression="gzip")  # 체크포인트
         frames.append(df)
