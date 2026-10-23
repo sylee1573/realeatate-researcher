@@ -6,50 +6,81 @@
 """
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 import requests
 
 import config
 from . import synthetic
 
+# 에이전트 프록시가 TLS 를 가로채므로 해당 CA 를 신뢰(있으면)
+_CA = "/root/.ccr/ca-bundle.crt"
+
+
+def _verify():
+    return _CA if os.path.exists(_CA) else True
+
+
+def _parse_items(body) -> list:
+    """sdsc2 응답의 items 가 list 또는 {'item': [...]} 양쪽으로 올 수 있어 흡수."""
+    items = body.get("items")
+    if isinstance(items, dict):
+        items = items.get("item", [])
+    return items or []
+
 
 # --- 1) 상가 POI --------------------------------------------------------
-def load_stores(center_lat, center_lon, radius_m, use_synthetic=None) -> pd.DataFrame:
-    """소상공인 상가(상권)정보: 반경 내 상가 목록.
+def load_stores(center_lat, center_lon, radius_m, use_synthetic=None,
+                inds_lcls=None, max_pages=30) -> pd.DataFrame:
+    """소상공인 상가(상권)정보: 반경 내 상가업소 조회 (storeListInRadius).
 
-    실 엔드포인트 예: {SANGGA_BASE}/storeListInRadius
-      params: serviceKey, radius(m), cx(경도), cy(위도), type=json, pageNo, numOfRows
-    반환 스키마는 synthetic.make_stores 와 동일하게 매핑하세요.
+    인증키(SANGGA_SERVICE_KEY)는 data.go.kr '일반 인증키(Decoding)' 값을 쓰세요.
+    (requests 가 파라미터를 다시 URL 인코딩하므로 Encoding 키를 넣으면 이중 인코딩됨)
+
+    컬럼: store_id, biz_lcls, biz_mcls, lat, lon, open_date, close_date
+    ※ 이 API 엔 개·폐업일이 없어 open/close 는 NaT (생존지표는 localdata 연동 후 보강).
     """
     if use_synthetic is None:
         use_synthetic = config.SANGGA_SERVICE_KEY is None
     if use_synthetic:
         return synthetic.make_stores()
 
-    # TODO: 실제 호출 — 페이지네이션 돌며 전부 수집 후 DataFrame 으로 정규화
     url = f"{config.SANGGA_BASE}/storeListInRadius"
-    params = {
-        "serviceKey": config.SANGGA_SERVICE_KEY,
-        "radius": int(radius_m),
-        "cx": center_lon,
-        "cy": center_lat,
-        "type": "json",
-        "numOfRows": 1000,
-        "pageNo": 1,
-    }
-    resp = requests.get(url, params=params, timeout=30)
-    resp.raise_for_status()
-    items = resp.json().get("body", {}).get("items", [])
-    # 공공 API 컬럼명 → 내부 스키마 매핑
+    rows, page = [], 1
+    while page <= max_pages:
+        params = {
+            "serviceKey": config.SANGGA_SERVICE_KEY,  # Decoding 키
+            "radius": int(radius_m),
+            "cx": center_lon,   # 경도
+            "cy": center_lat,   # 위도
+            "type": "json",
+            "numOfRows": 1000,
+            "pageNo": page,
+        }
+        if inds_lcls:
+            params["indsLclsCd"] = inds_lcls  # 업종대분류 코드(선택)
+        resp = requests.get(url, params=params, timeout=30, verify=_verify())
+        resp.raise_for_status()
+        body = resp.json().get("body", {}) or {}
+        items = _parse_items(body)
+        if not items:
+            break
+        rows.extend(items)
+        total = int(body.get("totalCount", 0) or 0)
+        if page * 1000 >= total:
+            break
+        page += 1
+
     df = pd.DataFrame([{
         "store_id": it.get("bizesId"),
         "biz_lcls": it.get("indsLclsNm"),
         "biz_mcls": it.get("indsMclsNm"),
         "lat": float(it["lat"]),
         "lon": float(it["lon"]),
-        "open_date": pd.NaT,   # 상가정보엔 없음 → load_permits 에서 보강
+        "open_date": pd.NaT,   # 상가정보엔 없음 → localdata 연동 시 보강
         "close_date": pd.NaT,
-    } for it in items])
+    } for it in rows if it.get("lat") and it.get("lon")])
     return df
 
 
