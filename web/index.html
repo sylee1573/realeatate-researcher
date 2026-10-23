@@ -1,0 +1,526 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>입지 리서치 콘솔</title>
+<style>
+  /* 레이아웃: 좌측 컨트롤/요약 · 우측 지도, 하단 전폭 추천 테이블 (좁으면 1열 스택) */
+  :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef1f4;
+    --fg: #16202b;
+    --muted: #5b6b7a;
+    --line: #d9e0e7;
+    --accent: #0f766e;      /* teal 700 */
+    --accent-soft: #d5ece9;
+    --warn: #b45309;
+    --good: #15803d;
+    --food: #d1495b;
+    --retail: #2563eb;
+    --service: #15803d;
+    --leisure: #7c3aed;
+    --font-ui: "Inter", ui-sans-serif, system-ui, "Apple SD Gothic Neo",
+               "Malgun Gothic", sans-serif;
+    --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1418;
+      --surface: #151d24;
+      --surface-2: #1c262e;
+      --fg: #e6edf3;
+      --muted: #93a2b1;
+      --line: #27333d;
+      --accent: #2dd4bf;
+      --accent-soft: #14312e;
+      --warn: #f59e0b;
+      --good: #4ade80;
+      --food: #f26d7d;
+      --retail: #60a5fa;
+      --service: #4ade80;
+      --leisure: #a78bfa;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1418;
+    --surface: #151d24;
+    --surface-2: #1c262e;
+    --fg: #e6edf3;
+    --muted: #93a2b1;
+    --line: #27333d;
+    --accent: #2dd4bf;
+    --accent-soft: #14312e;
+    --warn: #f59e0b;
+    --good: #4ade80;
+    --food: #f26d7d;
+    --retail: #60a5fa;
+    --service: #4ade80;
+    --leisure: #a78bfa;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-ui);
+    line-height: 1.5;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 22px 40px;
+  }
+
+  header.top { margin-bottom: 18px; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 4px;
+  }
+  h1 { font-size: 23px; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; max-width: 60ch; }
+  .demo-flag {
+    display: inline-block; margin-top: 10px; font-size: 11.5px; font-weight: 600;
+    color: var(--warn); border: 1px solid var(--warn); border-radius: 999px;
+    padding: 2px 10px; letter-spacing: .02em;
+  }
+
+  .grid {
+    display: grid; grid-template-columns: 330px 1fr; gap: 16px; align-items: start;
+  }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; min-width: 0;
+  }
+  .card h2 {
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 12px; font-weight: 600;
+  }
+
+  label.field { display: block; margin-bottom: 12px; font-size: 12.5px; color: var(--muted); }
+  label.field span.lab { display: block; margin-bottom: 4px; font-weight: 600; color: var(--fg); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  input[type="number"], input[type="range"] {
+    width: 100%; font-family: var(--font-num); font-size: 13px;
+    background: var(--surface-2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px;
+  }
+  input[type="range"] { padding: 0; accent-color: var(--accent); }
+  .rangeval { font-family: var(--font-num); color: var(--accent); font-weight: 600; }
+
+  .btns { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  button {
+    font-family: var(--font-ui); font-size: 13px; font-weight: 600;
+    border-radius: 8px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--fg);
+  }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile {
+    background: var(--surface-2); border-radius: 9px; padding: 10px 11px;
+  }
+  .tile .k { font-size: 10.5px; color: var(--muted); letter-spacing: .03em; }
+  .tile .v { font-family: var(--font-num); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .maphost { position: relative; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--surface-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  .legend .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--accent); background: transparent; }
+  .legend .star { color: var(--fg); font-weight: 700; }
+
+  .neighbors { margin-top: 14px; }
+  .nb-list { display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; }
+  .nb {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+    font-family: var(--font-num); font-size: 12px; padding: 4px 2px; border-bottom: 1px solid var(--line);
+  }
+  .bar { height: 6px; border-radius: 3px; background: var(--accent); }
+  .bar-track { background: var(--surface-2); border-radius: 3px; width: 90px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; }
+  tbody tr:first-child td { font-weight: 700; }
+  .rank { color: var(--accent); font-family: var(--font-num); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .scroll-x { overflow-x: auto; }
+  .note { color: var(--muted); font-size: 11.5px; margin-top: 10px; line-height: 1.6; }
+  .fullrow { grid-column: 1 / -1; margin-top: 16px; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">realeatate-researcher · MVP 1단계</p>
+    <h1>유사입지 기반 상가 활용 추천</h1>
+    <p class="sub">내 상가와 입지 조건이 비슷한 곳을 찾아, 거기서 실제로 성업 중인 업종을 역추적해 추천합니다. 공공데이터 파이프라인(수집→피처화→유사입지 KNN→추천)을 브라우저에서 그대로 구동합니다.</p>
+    <span class="demo-flag">● 데모: 합성 데이터 (실데이터는 .env 키 설정 후 파이썬 파이프라인에서)</span>
+  </header>
+
+  <div class="grid">
+    <!-- 좌: 컨트롤 + 요약 -->
+    <div>
+      <div class="card">
+        <h2>입력 조건</h2>
+        <div class="row2">
+          <label class="field"><span class="lab">위도 (lat)</span>
+            <input type="number" id="lat" value="37.5665" step="0.0005"></label>
+          <label class="field"><span class="lab">경도 (lon)</span>
+            <input type="number" id="lon" value="126.9780" step="0.0005"></label>
+        </div>
+        <label class="field"><span class="lab">분석 반경 <span class="rangeval" id="radiusv">500 m</span></span>
+          <input type="range" id="radius" min="200" max="1000" step="50" value="500"></label>
+        <div class="row2">
+          <label class="field"><span class="lab">유사입지 수 k <span class="rangeval" id="kv">10</span></span>
+            <input type="range" id="k" min="3" max="25" step="1" value="10"></label>
+          <label class="field"><span class="lab">추천 업종 <span class="rangeval" id="topv">8</span></span>
+            <input type="range" id="top" min="3" max="12" step="1" value="8"></label>
+        </div>
+        <div class="btns">
+          <button class="primary" id="run">▶ 분석 실행</button>
+          <button id="reseed">🎲 다른 도시 생성</button>
+        </div>
+      </div>
+
+      <div class="card neighbors">
+        <h2>내 입지 특성</h2>
+        <div class="summary" id="summary"></div>
+      </div>
+
+      <div class="card neighbors">
+        <h2>유사 입지 Top-K</h2>
+        <div class="nb-list" id="neighbors"></div>
+      </div>
+    </div>
+
+    <!-- 우: 지도 -->
+    <div class="card maphost">
+      <h2>상권 지도 <span style="font-weight:400;text-transform:none;letter-spacing:0">· 점=상가(업종색) · ◎=유사입지 · ★=내 상가</span></h2>
+      <canvas id="map" width="760" height="560" aria-label="상권 지도"></canvas>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--food)"></span>음식</span>
+        <span><span class="dot" style="background:var(--retail)"></span>소매</span>
+        <span><span class="dot" style="background:var(--service)"></span>서비스</span>
+        <span><span class="dot" style="background:var(--leisure)"></span>여가</span>
+        <span><span class="dot ring"></span>유사입지</span>
+        <span><span class="star">★</span> 내 상가</span>
+      </div>
+    </div>
+
+    <!-- 하: 추천 테이블 -->
+    <div class="card fullrow">
+      <h2>추천 업종 — 유사입지에서 성업 &amp; 내 입지 과밀 보정</h2>
+      <div class="scroll-x">
+        <table id="rec">
+          <thead><tr>
+            <th>#</th><th>업종</th><th>종합점수</th><th>표본 점포수</th>
+            <th>현존비율</th><th>평균 영업(개월)</th><th>내 반경 기존</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="note">점수 = 유사도 × 생존가중(영업개월·현존) 합계 ÷ (1 + 내 반경 기존 점포수). 현존비율이 높고 평균 영업개월이 길수록 '버티는' 업종입니다. 생존기간은 MVP의 성공 대리지표이며, 2단계에서 카드매출·유동인구로 보강합니다.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   유사입지 추천 MVP — 파이썬 파이프라인의 브라우저 구현
+   collect(synthetic) → features → KNN → recommend
+   d3는 지도 축척(scaleLinear)에만 사용. 로직은 순수 JS.
+   ============================================================ */
+
+// --- 업종 분류 (파이썬 BIZ_TAXONOMY 와 동일) ---
+const TAXONOMY = {
+  "음식":   ["한식","분식","카페","치킨","주점","양식"],
+  "소매":   ["편의점","의류","화장품","식료품","문구"],
+  "서비스": ["미용","학원","병원","세탁","부동산중개"],
+  "여가":   ["피트니스","노래방","스터디카페"],
+};
+const LCLS_COLOR = { "음식":"--food","소매":"--retail","서비스":"--service","여가":"--leisure" };
+const FLAT = [];
+for (const [lc, mcs] of Object.entries(TAXONOMY)) for (const mc of mcs) FLAT.push([lc, mc]);
+const MC_TO_LC = Object.fromEntries(FLAT.map(([lc, mc]) => [mc, lc]));
+
+const CENTER = [37.5665, 126.9780];
+const FEATURE_COLS = ["pop_total","pop_young_ratio","pop_senior_ratio","income_idx",
+                      "store_density","biz_diversity","transit_access","traffic_proxy"];
+
+// --- 시드 RNG (mulberry32) : 재현 가능한 합성 데이터 ---
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(rng, mu = 0, sd = 1) {
+  const u = Math.max(rng(), 1e-12), v = rng();
+  return mu + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// --- haversine (km) ---
+const R = 6371.0088;
+function hav(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180;
+  const dlat = (lat2 - lat1) * r, dlon = (lon2 - lon1) * r;
+  const a = Math.sin(dlat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dlon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function entropy(counts) {
+  const c = counts.filter(x => x > 0); const s = c.reduce((a,b)=>a+b,0);
+  if (!s) return 0;
+  return -c.reduce((acc,x)=>{const p=x/s; return acc+p*Math.log(p);},0);
+}
+
+// --- 합성 데이터 생성 (파이썬 synthetic.py 대응) ---
+function makeStores(rng, n = 1600, nClusters = 12) {
+  const [clat, clon] = CENTER;
+  const centers = Array.from({length: nClusters}, () => [clat + gauss(rng,0,0.03), clon + gauss(rng,0,0.03)]);
+  const stores = [];
+  const now = Date.now();
+  for (let i = 0; i < n; i++) {
+    const c = centers[Math.floor(rng()*nClusters)];
+    const lat = c[0] + gauss(rng,0,0.004), lon = c[1] + gauss(rng,0,0.004);
+    const [lc, mc] = FLAT[Math.floor(rng()*FLAT.length)];
+    const openOff = Math.floor(rng()*365*9);
+    const open = new Date(2015,0,1).getTime() + openOff*864e5;
+    const survive = Math.floor((-Math.log(Math.max(rng(),1e-9)) - Math.log(Math.max(rng(),1e-9))) * 500); // gamma(2)~scale500
+    const closed = rng() < 0.35;
+    const close = closed ? open + survive*864e5 : null;
+    stores.push({ id:`S${String(i).padStart(5,"0")}`, lc, mc, lat, lon, open,
+                  close: (close && close < now) ? close : (closed ? close : null) });
+  }
+  return stores;
+}
+function makePopulation(rng, grid = 34) {
+  const [clat, clon] = CENTER; const out = [];
+  for (let i = 0; i < grid; i++) for (let j = 0; j < grid; j++) {
+    const lat = clat - 0.06 + (0.12*i)/(grid-1);
+    const lon = clon - 0.06 + (0.12*j)/(grid-1);
+    const d = Math.hypot(lat-clat, lon-clon);
+    const pop = Math.max(50, 8000*Math.exp(-d/0.03) + gauss(rng,0,400));
+    out.push({ lat, lon, pop, young: 0.15+rng()*0.30, senior: 0.10+rng()*0.25, income: 70+rng()*60 });
+  }
+  return out;
+}
+function makeTransit(rng, n = 25) {
+  const [clat, clon] = CENTER; const out = [];
+  for (let i = 0; i < n; i++)
+    out.push({ lat: clat+gauss(rng,0,0.035), lon: clon+gauss(rng,0,0.035), riders: 3000+Math.floor(rng()*117000) });
+  return out;
+}
+
+// --- 피처화 (파이썬 build_features.py 대응) ---
+function siteFeatures(lat, lon, stores, pop, transit, radiusKm) {
+  // 인구 가중평균
+  let ptot=0, wy=0, ws=0, wi=0, wsum=0;
+  for (const p of pop) {
+    if (hav(lat,lon,p.lat,p.lon) <= radiusKm) { ptot+=p.pop; wy+=p.young*p.pop; ws+=p.senior*p.pop; wi+=p.income*p.pop; wsum+=p.pop; }
+  }
+  const young = wsum? wy/wsum : 0, senior = wsum? ws/wsum : 0, income = wsum? wi/wsum : 100;
+  // 상가 밀도 + 다양성 (현존만)
+  const mcCounts = {}; let density = 0;
+  for (const s of stores) {
+    if (s.close !== null) continue;
+    if (hav(lat,lon,s.lat,s.lon) <= radiusKm) { density++; mcCounts[s.mc]=(mcCounts[s.mc]||0)+1; }
+  }
+  const diversity = entropy(Object.values(mcCounts));
+  // 교통
+  let nearest = Infinity, maxRiders = 0;
+  for (const t of transit) {
+    const d = hav(lat,lon,t.lat,t.lon);
+    if (d < nearest) nearest = d;
+    if (d <= radiusKm*3 && t.riders > maxRiders) maxRiders = t.riders;
+  }
+  const transitAccess = 1/(1+nearest);
+  return { pop_total:ptot, pop_young_ratio:young, pop_senior_ratio:senior, income_idx:income,
+           store_density:density, biz_diversity:diversity, transit_access:transitAccess, traffic_proxy:maxRiders };
+}
+
+// --- 표준화 + KNN (파이썬 similarity.py 대응) ---
+function standardize(sites) {
+  const mean={}, std={};
+  for (const c of FEATURE_COLS) {
+    const vals = sites.map(s=>s.f[c]); const m = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const v = vals.reduce((a,b)=>a+(b-m)**2,0)/vals.length; mean[c]=m; std[c]=Math.sqrt(v)||1;
+  }
+  return { mean, std };
+}
+function zvec(f, sc) { return FEATURE_COLS.map(c => (f[c]-sc.mean[c])/sc.std[c]); }
+function knn(targetF, sites, sc, k) {
+  const tz = zvec(targetF, sc);
+  const scored = sites.map(s => {
+    const z = zvec(s.f, sc);
+    let d = 0; for (let i=0;i<z.length;i++) d += (z[i]-tz[i])**2;
+    return { id:s.id, lat:s.lat, lon:s.lon, dist:Math.sqrt(d) };
+  }).sort((a,b)=>a.dist-b.dist);
+  const top = scored.filter(s=>s.dist>1e-9).slice(0,k);
+  const md = top.reduce((a,b)=>a+b.dist,0)/(top.length||1);
+  top.forEach(s => s.sim = Math.exp(-s.dist/(md+1e-9)));
+  return top;
+}
+
+// --- 추천 (파이썬 recommend.py 대응) ---
+function recommend(targetLat, targetLon, neighbors, stores, radiusKm, topN) {
+  const now = Date.now();
+  const agg = {}; // mc -> {n, aliveSum, monthsSum, w}
+  for (const nb of neighbors) {
+    for (const s of stores) {
+      if (hav(nb.lat,nb.lon,s.lat,s.lon) > radiusKm) continue;
+      const end = s.close !== null ? s.close : now;
+      const months = Math.max((end - s.open)/864e5/30, 0);
+      const alive = s.close === null ? 1 : 0;
+      const w = nb.sim * (1 + Math.log1p(months)) * (0.5 + alive);
+      const a = agg[s.mc] || (agg[s.mc]={n:0,aliveSum:0,monthsSum:0,w:0});
+      a.n++; a.aliveSum+=alive; a.monthsSum+=months; a.w+=w;
+    }
+  }
+  // 내 반경 포화도
+  const myCount = {};
+  for (const s of stores) {
+    if (s.close !== null) continue;
+    if (hav(targetLat,targetLon,s.lat,s.lon) <= radiusKm) myCount[s.mc]=(myCount[s.mc]||0)+1;
+  }
+  const rows = Object.entries(agg).map(([mc,a]) => ({
+    mc, lc: MC_TO_LC[mc],
+    score: a.w/(1+(myCount[mc]||0)),
+    n: a.n, surv: a.n? a.aliveSum/a.n*100 : 0, months: a.n? a.monthsSum/a.n : 0,
+    my: myCount[mc]||0,
+  })).sort((x,y)=>y.score-x.score).slice(0,topN);
+  return rows;
+}
+
+// ============================================================
+//  상태 + 렌더
+// ============================================================
+let SEED = 42, DATA = null;
+const $ = id => document.getElementById(id);
+const cssv = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function buildData() {
+  const rng = mulberry32(SEED);
+  const stores = makeStores(rng);
+  const pop = makePopulation(rng);
+  const transit = makeTransit(rng);
+  // 후보 입지 = 상가 위치 샘플 (최대 420곳)
+  const idx = stores.map((_,i)=>i);
+  for (let i=idx.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+  const sampleIdx = idx.slice(0, Math.min(420, stores.length));
+  DATA = { stores, pop, transit, sampleIdx };
+}
+
+function analyze() {
+  const lat = parseFloat($("lat").value), lon = parseFloat($("lon").value);
+  const radiusKm = parseInt($("radius").value,10)/1000;
+  const k = parseInt($("k").value,10), topN = parseInt($("top").value,10);
+  const { stores, pop, transit, sampleIdx } = DATA;
+
+  const sites = sampleIdx.map(i => {
+    const s = stores[i];
+    return { id:s.id, lat:s.lat, lon:s.lon, f: siteFeatures(s.lat,s.lon,stores,pop,transit,radiusKm) };
+  });
+  const sc = standardize(sites);
+  const myF = siteFeatures(lat,lon,stores,pop,transit,radiusKm);
+  const neighbors = knn(myF, sites, sc, k);
+  const rec = recommend(lat,lon,neighbors,stores,radiusKm,topN);
+
+  renderSummary(myF);
+  renderNeighbors(neighbors);
+  renderRec(rec);
+  drawMap(lat,lon,stores,neighbors);
+}
+
+function renderSummary(f) {
+  const fmt = (n,d=0)=> n.toLocaleString("ko-KR",{maximumFractionDigits:d,minimumFractionDigits:d});
+  const tiles = [
+    ["반경 내 인구", fmt(f.pop_total)],
+    ["상가 밀도", fmt(f.store_density)+" 개"],
+    ["업종 다양성", fmt(f.biz_diversity,2)],
+    ["교통 접근성", fmt(f.transit_access,2)],
+    ["청년 비중", fmt(f.pop_young_ratio*100,1)+"%"],
+    ["소득 지수", fmt(f.income_idx,1)],
+  ];
+  $("summary").innerHTML = tiles.map(([k,v])=>`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+}
+
+function renderNeighbors(nb) {
+  $("neighbors").innerHTML = nb.map(n => {
+    const pct = Math.round(n.sim*100);
+    return `<div class="nb"><span>${n.id} · 유사도 ${pct}%</span>
+      <span class="bar-track"><span class="bar" style="width:${Math.max(6,pct*0.9)}px"></span></span></div>`;
+  }).join("");
+}
+
+function renderRec(rows) {
+  const tb = $("rec").querySelector("tbody");
+  tb.innerHTML = rows.map((r,i)=>{
+    const color = `var(${LCLS_COLOR[r.lc]})`;
+    return `<tr>
+      <td class="rank">${i+1}</td>
+      <td><span class="pill" style="background:${color}22;color:${color}">${r.lc}</span> ${r.mc}</td>
+      <td>${r.score.toFixed(2)}</td>
+      <td>${r.n.toLocaleString("ko-KR")}</td>
+      <td style="color:${r.surv>=65?'var(--good)':r.surv<45?'var(--warn)':'inherit'}">${r.surv.toFixed(1)}%</td>
+      <td>${r.months.toFixed(1)}</td>
+      <td>${r.my}</td>
+    </tr>`;
+  }).join("");
+}
+
+function drawMap(lat, lon, stores, neighbors) {
+  const cv = $("map"), ctx = cv.getContext("2d");
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const W = cv.clientWidth, H = Math.round(W*0.74);
+  cv.width = W*dpr; cv.height = H*dpr; cv.style.height = H+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const lats = stores.map(s=>s.lat).concat(lat);
+  const lons = stores.map(s=>s.lon).concat(lon);
+  const pad = 18;
+  const x = d3.scaleLinear().domain([Math.min(...lons),Math.max(...lons)]).range([pad, W-pad]);
+  const y = d3.scaleLinear().domain([Math.min(...lats),Math.max(...lats)]).range([H-pad, pad]);
+
+  // 상가 점
+  for (const s of stores) {
+    ctx.beginPath();
+    ctx.fillStyle = cssv(LCLS_COLOR[s.lc]);
+    ctx.globalAlpha = s.close===null ? 0.72 : 0.22;
+    ctx.arc(x(s.lon), y(s.lat), 1.9, 0, 2*Math.PI); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // 유사입지 링
+  ctx.strokeStyle = cssv("--accent"); ctx.lineWidth = 2;
+  for (const n of neighbors) {
+    ctx.beginPath(); ctx.arc(x(n.lon), y(n.lat), 7, 0, 2*Math.PI); ctx.stroke();
+  }
+  // 내 상가 ★
+  ctx.fillStyle = cssv("--fg");
+  ctx.font = "700 20px " + cssv("--font-ui");
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("★", x(lon), y(lat));
+}
+
+// --- 바인딩 ---
+$("radius").addEventListener("input", e => $("radiusv").textContent = e.target.value + " m");
+$("k").addEventListener("input", e => $("kv").textContent = e.target.value);
+$("top").addEventListener("input", e => $("topv").textContent = e.target.value);
+$("run").addEventListener("click", analyze);
+$("reseed").addEventListener("click", () => { SEED = Math.floor(Math.random()*1e6); buildData(); analyze(); });
+window.addEventListener("resize", () => { if (DATA) analyze(); });
+
+buildData();
+analyze();
+</script>
