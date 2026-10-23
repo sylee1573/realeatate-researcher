@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import quote, urlencode
 
 import pandas as pd
 import requests
@@ -20,6 +21,19 @@ _CA = "/root/.ccr/ca-bundle.crt"
 
 def _verify():
     return _CA if os.path.exists(_CA) else True
+
+
+def _get_with_key(url, service_key, params, **kw):
+    """data.go.kr 인증키를 형태에 상관없이 안전하게 전송.
+
+    data.go.kr 은 요즘 키를 하나만 주기도 함:
+      - Encoding 키(%2B·%2F 등 이미 URL 인코딩됨) → 그대로 붙임
+      - Decoding 키(+·/·= 원문) → 한 번 인코딩해서 붙임
+    requests 의 params= 에 넣으면 Encoding 키가 이중 인코딩되므로 직접 조립.
+    """
+    key_part = service_key if "%" in service_key else quote(service_key, safe="")
+    full = f"{url}?serviceKey={key_part}&{urlencode(params)}"
+    return requests.get(full, **kw)
 
 
 def _parse_items(body) -> list:
@@ -50,7 +64,6 @@ def load_stores(center_lat, center_lon, radius_m, use_synthetic=None,
     rows, page = [], 1
     while page <= max_pages:
         params = {
-            "serviceKey": config.SANGGA_SERVICE_KEY,  # Decoding 키
             "radius": int(radius_m),
             "cx": center_lon,   # 경도
             "cy": center_lat,   # 위도
@@ -60,7 +73,8 @@ def load_stores(center_lat, center_lon, radius_m, use_synthetic=None,
         }
         if inds_lcls:
             params["indsLclsCd"] = inds_lcls  # 업종대분류 코드(선택)
-        resp = requests.get(url, params=params, timeout=30, verify=_verify())
+        resp = _get_with_key(url, config.SANGGA_SERVICE_KEY, params,
+                             timeout=30, verify=_verify())
         resp.raise_for_status()
         body = resp.json().get("body", {}) or {}
         items = _parse_items(body)
