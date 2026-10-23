@@ -18,5 +18,7 @@ try:
     print(f"\n이제 다음으로 실행하세요:\n   python scripts/run_mvp.py --address \"{addr}\"")
 except Exception as e:  # noqa: BLE001
     print(f"❌ 실패: {e}")
-    print("   .env 에 KAKAO_REST_KEY(또는 VWORLD_KEY) 가 들어갔는지 확인하세요.")
+    print("   확인: ① 네트워크 시크릿(허용 사이트 dapi.kakao.com, 헤더 Authorization/접두사 KakaoAK)")
+    print("        ② 또는 .env 의 KAKAO_REST_KEY/VWORLD_KEY")
+    print("        ③ 시크릿은 '새 세션'부터 적용됩니다.")
     sys.exit(1)
