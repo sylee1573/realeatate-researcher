@@ -38,6 +38,11 @@ def main():
     idx = NationalIndex()
     cd, nm, region, dist = idx.nearest_adong(lat, lon)
     print(f"\n내 입지 행정동: {region} {nm} (중심 {dist:.2f}km) [{cd}]")
+    info = idx.adong_info(cd)
+    extra = [f"{k} {v:,.0f}" if isinstance(v, (int, float)) else f"{k} {v}"
+             for k, v in info.items() if k not in ("행정동", "지역")]
+    if extra:
+        print("  " + " · ".join(extra))
 
     sim = idx.similar(cd, k=args.k)
     print(f"\n=== 업종 구성이 비슷한 전국 행정동 Top {len(sim)} ===")

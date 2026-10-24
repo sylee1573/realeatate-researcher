@@ -9,6 +9,7 @@ data/*
 data/index/*
 !data/index/adong_features.csv.gz
 !data/index/adong_biz_counts.csv.gz
+!data/index/adong_population.csv.gz
 !data/index/meta.json
 
 # python

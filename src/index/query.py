@@ -55,18 +55,37 @@ class NationalIndex:
         row = self._pos[adong_cd]
         n = min(k + 1, len(self.adong_ids))
         dist, idx = self.nn.kneighbors(self.share[row:row + 1], n_neighbors=n)
+        has_pop = "tot_ppltn" in self.feat.columns
         out = []
         for d, j in zip(dist[0], idx[0]):
             cd = self.adong_ids[j]
             if cd == adong_cd:
                 continue
             fr = self.feat.loc[cd]
-            out.append({
+            row = {
                 "adong_cd": cd, "행정동": fr["adong_nm"],
                 "지역": f"{fr['sido']} {fr['sigungu']}",
                 "유사도": round(1 - d, 3), "점포수": int(self.totals[j]),
-            })
+            }
+            if has_pop:
+                row["인구"] = (int(fr["tot_ppltn"]) if pd.notna(fr["tot_ppltn"]) else None)
+                row["인구밀도"] = (round(fr["ppltn_dnsty"], 0)
+                                 if pd.notna(fr.get("ppltn_dnsty")) else None)
+            out.append(row)
         return pd.DataFrame(out).head(k)
+
+    def adong_info(self, adong_cd) -> dict:
+        """행정동 요약(이름·지역·점포수·인구 등). 추천 상단 표시용."""
+        if adong_cd not in self.feat.index:
+            return {}
+        fr = self.feat.loc[adong_cd]
+        d = {"행정동": fr["adong_nm"], "지역": f"{fr['sido']} {fr['sigungu']}"}
+        for c, lab in [("tot_ppltn", "인구"), ("ppltn_dnsty", "인구밀도"),
+                       ("avg_age", "평균연령"), ("employee_cnt", "종사자수"),
+                       ("aged_child_idx", "노령화지수")]:
+            if c in self.feat.columns and pd.notna(fr.get(c)):
+                d[lab] = fr[c]
+        return d
 
     # --- 3) 기회 업종 추천 -----------------------------------------------
     def recommend(self, adong_cd, similar_df, top_n=12) -> pd.DataFrame:
