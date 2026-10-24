@@ -145,6 +145,8 @@
 const $ = id => document.getElementById(id);
 const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const fmt = (n, d = 0) => n == null ? "—" : Number(n).toLocaleString("ko-KR", { maximumFractionDigits: d, minimumFractionDigits: d });
+const shortSido = s => s.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "");
+const label = a => `${shortSido(a.sido)} ${a.sgg} ${a.nm}`;
 
 let D, NB, shares, normsArr, popZ, popAvail, MAP = null, cur = 0;
 const POP_LABELS = ["인구", "인구밀도", "평균연령", "종사자수", "노령화지수", "가구원수"];
@@ -275,11 +277,22 @@ function bindMap() {
     D.adong.forEach((a, i) => { const dx = MAP.sx(a.lon) - px, dy = MAP.sy(a.lat) - py, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } });
     cur = best; recompute();
   });
-  $("search").addEventListener("change", e => {
-    const v = e.target.value.trim();
-    const i = D.adong.findIndex(a => `${a.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${a.sgg} ${a.nm}` === v);
+  const matchAdong = v => {
+    v = (v || "").trim(); if (!v) return -1;
+    const key = v.replace(/\s+/g, "");
+    let i = D.adong.findIndex(a => label(a) === v);                       // 전체 라벨 정확
+    if (i < 0) i = D.adong.findIndex(a => a.nm === v);                    // 동명 정확(예: 역삼1동)
+    if (i < 0) i = D.adong.findIndex(a => a.nm.replace(/\s+/g, "") === key);
+    if (i < 0) i = D.adong.findIndex(a => label(a).replace(/\s+/g, "").includes(key));  // 부분 포함
+    return i;
+  };
+  $("search").addEventListener("input", e => {   // 목록에서 정확히 고르면 즉시 반영
+    const i = D.adong.findIndex(a => label(a) === e.target.value.trim());
     if (i >= 0) { cur = i; recompute(); }
   });
+  const runSearch = e => { const i = matchAdong(e.target.value); if (i >= 0) { cur = i; recompute(); } };
+  $("search").addEventListener("change", runSearch);
+  $("search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); runSearch(e); } });
   $("alpha").addEventListener("input", e => {
     const a = +e.target.value; $("av").textContent = `업종${a} · 인구${100 - a}`; recompute();
   });
