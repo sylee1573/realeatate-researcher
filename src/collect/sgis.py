@@ -37,17 +37,17 @@ def _verify():
     return _CA if os.path.exists(_CA) else True
 
 
-def _get(url, retries=3, **params):
+def _get(url, retries=5, **params):
     # 빈/None 파라미터 제거 — mods.go.kr 는 cd='' 같은 빈값을 422로 거부
     params = {k: v for k, v in params.items() if v not in (None, "")}
     last = None
-    for _ in range(retries):  # SGIS 간헐적 TLS 끊김 대비
+    for i in range(retries):  # 프록시 터널 끊김(1006)·TLS 끊김 대비 지수 백오프
         try:
-            r = requests.get(url, params=params, timeout=25, verify=_verify())
+            r = requests.get(url, params=params, timeout=20, verify=_verify())
             return r.json()
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(1)
+            time.sleep(min(2 ** i, 16))
     raise RuntimeError(f"SGIS 요청 실패: {last}")
 
 
@@ -74,16 +74,45 @@ def _num(v):
         return None
 
 
-def load_population_nationwide(year="2023", token=None, verbose=True, sleep=0.1):
-    """전국 행정동 인구 DataFrame (이름 키: sido/sigungu/adong_nm)."""
+def load_population_nationwide(year="2023", token=None, verbose=True, sleep=0.1,
+                               checkpoint=None, resume=True):
+    """전국 행정동 인구 수집. 시군구 단위 체크포인트·건너뛰기·이어받기 지원.
+
+    반환: (DataFrame, failed) — failed 는 실패한 (시도, 시군구, 사유) 목록.
+    checkpoint 경로를 주면 시군구마다 중간 저장하여, 재호출 시 이미 받은 시군구는 건너뜀.
+    """
+    from pathlib import Path
+
     token = token or get_token()
-    rows = []
+    rows, done = [], set()
+    cp = Path(checkpoint) if checkpoint else None
+    if cp and resume and cp.exists():
+        prev = pd.read_csv(cp, dtype={"sgis_cd": str})
+        rows = prev.to_dict("records")
+        done = set(zip(prev["sido"], prev["sigungu"]))
+        if verbose:
+            print(f"  재개: 기존 {len(done)} 시군구 / {len(rows)} 동")
+
+    failed = []
     for s in _stage(token):
         sido_nm = s["addr_name"]
-        for g in _stage(token, s["cd"]):
+        try:
+            gus = _stage(token, s["cd"])
+        except Exception as e:  # noqa: BLE001
+            failed.append((sido_nm, "<시군구목록>", str(e)[:80]))
+            continue
+        for g in gus:
             gnm = g["addr_name"]
-            j = _get(f"{BASE}/stats/population.json", accessToken=token,
-                     adm_cd=g["cd"], year=year, low_search="1")
+            if (sido_nm, gnm) in done:
+                continue
+            try:
+                j = _get(f"{BASE}/stats/population.json", accessToken=token,
+                         adm_cd=g["cd"], year=year, low_search="1")
+            except Exception as e:  # noqa: BLE001
+                failed.append((sido_nm, gnm, str(e)[:80]))
+                if verbose:
+                    print(f"  ✗ {sido_nm} {gnm} 실패(건너뜀)")
+                continue
             dongs = j.get("result") or []
             for d in dongs:
                 rec = {"sido": sido_nm, "sigungu": gnm,
@@ -91,7 +120,10 @@ def load_population_nationwide(year="2023", token=None, verbose=True, sleep=0.1)
                 for f in NUM_FIELDS:
                     rec[f] = _num(d.get(f))
                 rows.append(rec)
+            done.add((sido_nm, gnm))
+            if cp:
+                pd.DataFrame(rows).to_csv(cp, index=False)  # 증분 저장
             if verbose:
                 print(f"  {sido_nm} {gnm}: 동 {len(dongs)}")
             time.sleep(sleep)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows), failed

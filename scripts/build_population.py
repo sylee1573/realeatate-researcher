@@ -24,10 +24,25 @@ def _norm(s):
 
 def main():
     t0 = time.time()
-    print("■ SGIS 전국 인구 수집 ...")
-    pop = sgis.load_population_nationwide(year="2023", verbose=True)
+    print("■ SGIS 전국 인구 수집 (체크포인트·건너뛰기·재시도) ...")
+    cp = IDX / "_pop_checkpoint.csv"
+    token = sgis.get_token()
+    pop, failed = None, [1]
+    for attempt in range(4):  # 실패 시군구가 남으면 토큰 갱신 후 재시도(이어받기)
+        pop, failed = sgis.load_population_nationwide(
+            year="2023", token=token, verbose=True, checkpoint=str(cp), resume=True)
+        print(f"  [시도 {attempt+1}] 누적 동 {len(pop):,} / 실패 시군구 {len(failed)}")
+        if not failed:
+            break
+        token = sgis.get_token()
+    if failed:
+        print(f"  ⚠ 끝내 실패한 시군구 {len(failed)}곳(부분 수집으로 진행):")
+        for f in failed[:10]:
+            print("    -", f[0], f[1])
     print(f"  수집 행정동 {len(pop):,}")
     pop.to_csv(IDX / "adong_population.csv.gz", index=False, compression="gzip")
+    if cp.exists():
+        cp.unlink()
 
     feats = pd.read_csv(IDX / "adong_features.csv.gz", dtype={"adong_cd": str})
     # 이름 정규화 후 결합
