@@ -38,6 +38,8 @@ def _verify():
 
 
 def _get(url, retries=3, **params):
+    # 빈/None 파라미터 제거 — mods.go.kr 는 cd='' 같은 빈값을 422로 거부
+    params = {k: v for k, v in params.items() if v not in (None, "")}
     last = None
     for _ in range(retries):  # SGIS 간헐적 TLS 끊김 대비
         try:
