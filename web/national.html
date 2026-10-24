@@ -124,7 +124,7 @@
         <div class="card">
           <h2>업종구성+인구 비슷한 전국 행정동</h2>
           <div class="scroll-x"><table id="sim"><thead><tr>
-            <th>#</th><th>행정동</th><th>유사도</th><th>점포</th><th>인구</th><th>밀도</th>
+            <th>#</th><th>행정동</th><th>유사도</th><th>점포</th><th>인구</th><th>연령</th><th>고령%</th>
           </tr></thead><tbody></tbody></table></div>
           <p class="note">행을 클릭하면 그 행정동으로 이동합니다. 유사도는 업종 구성과 인구 특성을 함께 반영합니다.</p>
         </div>
@@ -149,8 +149,8 @@ const shortSido = s => s.replace(/특별시|광역시|특별자치시|특별자�
 const label = a => `${shortSido(a.sido)} ${a.sgg} ${a.nm}`;
 
 let D, NB, shares, normsArr, popZ, popAvail, MAP = null, cur = 0;
-const POP_LABELS = ["인구", "인구밀도", "평균연령", "종사자수", "노령화지수", "가구원수"];
-const LOG_IDX = new Set([0, 1, 3]);  // tot_ppltn, ppltn_dnsty, employee_cnt
+// pop 배열: [인구, 밀도, 평균연령, 종사자수, 가구원수, 유소년부양비, 노년부양비]
+const ageShares = p => { if (!p) return null; const j = p[5] / 100, o = p[6] / 100, d = 1 + j + o; return [j / d * 100, 1 / d * 100, o / d * 100]; };
 
 fetch("national_index.json").then(r => r.json()).then(data => { D = data; init(); })
   .catch(e => { $("loading").textContent = "데이터를 불러오지 못했습니다: " + e; });
@@ -167,15 +167,16 @@ function init() {
   });
   normsArr = shares.map(v => { let s = 0; for (let i = 0; i < NB; i++) s += v[i] * v[i]; return Math.sqrt(s); });
 
-  // 인구 특성 표준화(규모형 로그 → z-score, 결측 동 제외)
+  // 인구 유사도 피처(7): log(인구·밀도·종사자), 가구원, 평균연령, 유소년·고령 비중
   const P = A.map(a => a.pop);
   popAvail = P.map(p => p != null);
-  const cols = 6, sum = new Float64Array(cols), sm2 = new Float64Array(cols), cnt = new Float64Array(cols);
-  const tx = (k, x) => LOG_IDX.has(k) ? Math.log1p(x) : x;
-  P.forEach(p => { if (p) for (let k = 0; k < cols; k++) { const x = tx(k, p[k]); sum[k] += x; sm2[k] += x * x; cnt[k]++; } });
+  const feats = P.map(p => { if (!p) return null; const j = p[5] / 100, o = p[6] / 100, d = 1 + j + o;
+    return [Math.log1p(p[0]), Math.log1p(p[1]), Math.log1p(p[3]), p[4], p[2], j / d, o / d]; });
+  const C = 7, sum = new Float64Array(C), sm2 = new Float64Array(C), cnt = new Float64Array(C);
+  feats.forEach(f => { if (f) for (let k = 0; k < C; k++) { sum[k] += f[k]; sm2[k] += f[k] * f[k]; cnt[k]++; } });
   const mean = [], std = [];
-  for (let k = 0; k < cols; k++) { mean[k] = sum[k] / cnt[k]; std[k] = Math.sqrt(Math.max(sm2[k] / cnt[k] - mean[k] ** 2, 1e-9)) || 1; }
-  popZ = P.map(p => { if (!p) return null; const z = new Float64Array(cols); for (let k = 0; k < cols; k++) z[k] = (tx(k, p[k]) - mean[k]) / std[k]; return z; });
+  for (let k = 0; k < C; k++) { mean[k] = sum[k] / cnt[k]; std[k] = Math.sqrt(Math.max(sm2[k] / cnt[k] - mean[k] ** 2, 1e-9)) || 1; }
+  popZ = feats.map(f => { if (!f) return null; const z = new Float64Array(C); for (let k = 0; k < C; k++) z[k] = (f[k] - mean[k]) / std[k]; return z; });
 
   // 행정동 검색 목록
   $("adongs").innerHTML = A.map((a, i) => `<option value="${a.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${a.sgg} ${a.nm}">`).join("");
@@ -198,7 +199,7 @@ function similar(t, k) {
     for (let i = 0; i < NB; i++) dot += tS[i] * sj[i];
     const biz = (normsArr[j] && tN) ? dot / (normsArr[j] * tN) : 0;
     if (tZ && popAvail[j]) {
-      let d = 0; const zj = popZ[j]; for (let m = 0; m < 6; m++) { const e = zj[m] - tZ[m]; d += e * e; }
+      let d = 0; const zj = popZ[j]; for (let m = 0; m < tZ.length; m++) { const e = zj[m] - tZ[m]; d += e * e; }
       sim[j] = al * biz + (1 - al) * (1 / (1 + Math.sqrt(d)));
     } else if (tZ && !popAvail[j]) {
       sim[j] = -Infinity;  // 대상에 인구 있음 → 인구 없는 후보 제외
@@ -226,8 +227,9 @@ function recompute() {
   $("me-nm").innerHTML = `${a.nm} <small>${a.sido} ${a.sgg}</small>`;
   const tiles = [["점포수", fmt(a.sc) + "개"]];
   if (a.pop) {
+    const sh = ageShares(a.pop);
     tiles.push(["인구", fmt(a.pop[0])], ["인구밀도", fmt(a.pop[1])], ["평균연령", fmt(a.pop[2], 1)],
-      ["종사자수", fmt(a.pop[3])], ["노령화지수", fmt(a.pop[4], 1)]);
+      ["종사자수", fmt(a.pop[3])], ["유소년%", fmt(sh[0], 1)], ["고령%", fmt(sh[2], 1)]);
   } else tiles.push(["인구", "(미수록)"]);
   $("me-sum").innerHTML = tiles.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
 
@@ -238,7 +240,7 @@ function recompute() {
     return `<tr class="clk" data-j="${s.j}"><td>${i + 1}</td>
       <td>${o.nm}<br><small style="color:var(--muted)">${o.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${o.sgg}</small></td>
       <td><span class="bar-wrap"><span class="bar" style="width:${Math.max(6, pct * 0.7)}px"></span></span> ${s.sim.toFixed(3)}</td>
-      <td>${fmt(o.sc)}</td><td>${o.pop ? fmt(o.pop[0]) : "—"}</td><td>${o.pop ? fmt(o.pop[1]) : "—"}</td></tr>`;
+      <td>${fmt(o.sc)}</td><td>${o.pop ? fmt(o.pop[0]) : "—"}</td><td>${o.pop ? fmt(o.pop[2], 1) : "—"}</td><td>${o.pop ? fmt(ageShares(o.pop)[2], 1) : "—"}</td></tr>`;
   }).join("");
   $("sim").querySelectorAll("tr.clk").forEach(tr => tr.addEventListener("click", () => { cur = +tr.dataset.j; recompute(); }));
 

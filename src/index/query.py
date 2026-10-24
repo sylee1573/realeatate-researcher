@@ -19,10 +19,34 @@ from src.utils.geo import haversine_km
 
 INDEX_DIR = config.DATA_DIR / "index"
 
-# 유사도에 반영할 인구 특성(있을 때). 규모형은 로그변환 후 표준화.
-POP_SIM_FIELDS = ["tot_ppltn", "ppltn_dnsty", "employee_cnt",
-                  "avg_age", "aged_child_idx", "avg_fmember_cnt"]
-POP_LOG_FIELDS = {"tot_ppltn", "ppltn_dnsty", "employee_cnt"}
+# 유사도에 반영할 인구 특성(있을 때). 규모형은 로그변환, 연령구조는 부양비에서 유도.
+POP_SRC_FIELDS = ["tot_ppltn", "ppltn_dnsty", "employee_cnt", "avg_fmember_cnt",
+                  "avg_age", "juv_suprt_per", "oldage_suprt_per"]
+
+
+def _pop_feature_matrix(df):
+    """7개 인구 유사도 피처. 연령구조(유소년·고령 비중)는 부양비에서 유도."""
+    j = df["juv_suprt_per"].astype(float) / 100.0
+    o = df["oldage_suprt_per"].astype(float) / 100.0
+    denom = (1.0 + j + o).replace(0, np.nan)
+    return pd.DataFrame({
+        "pop": np.log1p(df["tot_ppltn"].astype(float)),
+        "dens": np.log1p(df["ppltn_dnsty"].astype(float)),
+        "emp": np.log1p(df["employee_cnt"].astype(float)),
+        "fam": df["avg_fmember_cnt"].astype(float),
+        "age": df["avg_age"].astype(float),
+        "juv": j / denom,     # 유소년(0-14) 비중
+        "old": o / denom,     # 고령(65+) 비중
+    })
+
+
+def age_shares(juv_suprt, old_suprt):
+    """부양비 → (유소년, 생산, 고령) 비중(%). 값 없으면 None."""
+    if pd.isna(juv_suprt) or pd.isna(old_suprt):
+        return None
+    j, o = juv_suprt / 100.0, old_suprt / 100.0
+    den = 1.0 + j + o
+    return (round(j / den * 100, 1), round(1 / den * 100, 1), round(o / den * 100, 1))
 
 
 class NationalIndex:
@@ -45,11 +69,9 @@ class NationalIndex:
         self._share_norm = np.linalg.norm(self.share, axis=1)
 
         # 인구 특성 행렬(표준화) — 모든 피처가 있는 동만 유효(pop_avail)
-        self.has_pop = all(c in self.feat.columns for c in POP_SIM_FIELDS)
+        self.has_pop = all(c in self.feat.columns for c in POP_SRC_FIELDS)
         if self.has_pop:
-            P = self.feat.reindex(self.adong_ids)[POP_SIM_FIELDS].astype(float).copy()
-            for c in POP_LOG_FIELDS:
-                P[c] = np.log1p(P[c])
+            P = _pop_feature_matrix(self.feat.reindex(self.adong_ids))
             mean, std = P.mean(), P.std(ddof=0).replace(0, 1)
             self._popZ = ((P - mean) / std).to_numpy()
             self.pop_avail = ~np.isnan(self._popZ).any(axis=1)
@@ -96,8 +118,9 @@ class NationalIndex:
                  "유사도": round(float(sim[j]), 3), "점포수": int(self.totals[j])}
             if has_pop:
                 r["인구"] = int(fr["tot_ppltn"]) if pd.notna(fr["tot_ppltn"]) else None
-                r["인구밀도"] = (round(fr["ppltn_dnsty"], 0)
-                               if pd.notna(fr.get("ppltn_dnsty")) else None)
+                r["평균연령"] = round(fr["avg_age"], 1) if pd.notna(fr.get("avg_age")) else None
+                sh = age_shares(fr.get("juv_suprt_per"), fr.get("oldage_suprt_per"))
+                r["고령%"] = sh[2] if sh else None
             out.append(r)
             if len(out) >= k:
                 break
@@ -110,10 +133,12 @@ class NationalIndex:
         fr = self.feat.loc[adong_cd]
         d = {"행정동": fr["adong_nm"], "지역": f"{fr['sido']} {fr['sigungu']}"}
         for c, lab in [("tot_ppltn", "인구"), ("ppltn_dnsty", "인구밀도"),
-                       ("avg_age", "평균연령"), ("employee_cnt", "종사자수"),
-                       ("aged_child_idx", "노령화지수")]:
+                       ("avg_age", "평균연령"), ("employee_cnt", "종사자수")]:
             if c in self.feat.columns and pd.notna(fr.get(c)):
                 d[lab] = fr[c]
+        sh = age_shares(fr.get("juv_suprt_per"), fr.get("oldage_suprt_per"))
+        if sh:
+            d["유소년%"], d["고령%"] = sh[0], sh[2]
         return d
 
     # --- 3) 기회 업종 추천 -----------------------------------------------

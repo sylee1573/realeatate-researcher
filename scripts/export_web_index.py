@@ -17,7 +17,9 @@ import pandas as pd
 import config
 
 IDX = config.DATA_DIR / "index"
-POP = ["tot_ppltn", "ppltn_dnsty", "avg_age", "employee_cnt", "aged_child_idx", "avg_fmember_cnt"]
+# pop 배열 순서(웹에서 참조): 인구·밀도·평균연령·종사자수·가구원수·유소년부양비·노년부양비
+POP = ["tot_ppltn", "ppltn_dnsty", "avg_age", "employee_cnt", "avg_fmember_cnt",
+       "juv_suprt_per", "oldage_suprt_per"]
 
 feat = pd.read_csv(IDX / "adong_features.csv.gz", dtype={"adong_cd": str})
 cnt = pd.read_csv(IDX / "adong_biz_counts.csv.gz", dtype={"adong_cd": str})
