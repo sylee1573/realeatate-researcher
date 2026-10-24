@@ -1,0 +1,290 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>전국 유사입지 추천</title>
+<style>
+  /* 레이아웃: 좌 컨트롤/요약 · 우 지도, 하단 전폭 2개 표. 좁으면 1열 스택. */
+  :root {
+    --bg: #f3f6f8; --surface: #fff; --surface-2: #eef2f5; --fg: #15222e;
+    --muted: #5a6b7a; --line: #d7e0e7; --accent: #0e7c74; --accent-soft: #d3ebe8;
+    --good: #15803d; --warn: #b45309; --dot: #9db3c2;
+    --font-ui: "Inter", ui-sans-serif, system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --font-num: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1419; --surface: #141d24; --surface-2: #1b252d; --fg: #e5edf3;
+      --muted: #91a1b0; --line: #26323c; --accent: #2bd4c0; --accent-soft: #13302d;
+      --good: #4ade80; --warn: #f59e0b; --dot: #41566a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1419; --surface: #141d24; --surface-2: #1b252d; --fg: #e5edf3;
+    --muted: #91a1b0; --line: #26323c; --accent: #2bd4c0; --accent-soft: #13302d;
+    --good: #4ade80; --warn: #f59e0b; --dot: #41566a; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); line-height: 1.5; }
+  .wrap { max-width: 1180px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 22px 40px; }
+  .eyebrow { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 4px; }
+  h1 { font-size: 23px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; max-width: 64ch; }
+  .src { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; margin-top: 18px; }
+  @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .card h2 { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+
+  label.f { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 13px; }
+  label.f .lab { display: block; font-weight: 600; color: var(--fg); margin-bottom: 5px; }
+  input[type="text"] { width: 100%; font-size: 14px; background: var(--surface-2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font-family: var(--font-ui); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .rv { font-family: var(--font-num); color: var(--accent); font-weight: 600; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile { background: var(--surface-2); border-radius: 9px; padding: 9px 11px; }
+  .tile .k { font-size: 10.5px; color: var(--muted); }
+  .tile .v { font-family: var(--font-num); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .me { font-weight: 700; font-size: 15px; margin: 0 0 2px; }
+  .me small { font-weight: 400; color: var(--muted); font-size: 12px; }
+
+  canvas { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--surface-2); cursor: crosshair; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+  .ring { border: 2px solid var(--accent); background: transparent !important; }
+
+  .scroll-x { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  thead th { color: var(--muted); font-size: 11px; letter-spacing: .03em; text-transform: uppercase; font-weight: 600; }
+  tbody tr.clk { cursor: pointer; }
+  tbody tr.clk:hover td { background: var(--surface-2); }
+  .bar-wrap { background: var(--surface-2); border-radius: 3px; height: 7px; width: 70px; display: inline-block; vertical-align: middle; }
+  .bar { height: 7px; border-radius: 3px; background: var(--accent); }
+  .pill { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .note { color: var(--muted); font-size: 11.5px; margin-top: 10px; line-height: 1.6; }
+  .fullrow { grid-column: 1 / -1; margin-top: 16px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 780px) { .two { grid-template-columns: 1fr; } }
+  #loading { color: var(--muted); font-size: 13px; padding: 30px 0; text-align: center; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">realeatate-researcher · 전국 실데이터</p>
+    <h1>전국 유사입지 추천</h1>
+    <p class="sub">전국 행정동의 업종 구성과 인구 특성을 비교해, 내 상가 자리와 비슷한 전국 행정동을 찾고 거기서 성업하는 '기회 업종'을 추천합니다.</p>
+    <p class="src" id="meta">데이터 로딩 중…</p>
+  </header>
+
+  <div id="loading">전국 인덱스를 불러오는 중입니다…</div>
+
+  <div id="app" hidden>
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>입력</h2>
+          <label class="f"><span class="lab">행정동 선택</span>
+            <input type="text" id="search" list="adongs" placeholder="예: 강남구 역삼1동 / 침산동" autocomplete="off">
+            <datalist id="adongs"></datalist>
+            <span class="hint">이름을 입력해 고르거나, 오른쪽 지도를 클릭하세요.</span>
+          </label>
+          <label class="f"><span class="lab">유사도 기준 <span class="rv" id="av">업종60 · 인구40</span></span>
+            <input type="range" id="alpha" min="0" max="100" step="10" value="60">
+            <span class="hint">왼쪽=인구 중심, 오른쪽=업종 구성 중심</span>
+          </label>
+          <label class="f"><span class="lab">유사 행정동 수 <span class="rv" id="kv">8</span></span>
+            <input type="range" id="k" min="3" max="20" step="1" value="8"></label>
+          <label class="f"><span class="lab">추천 업종 수 <span class="rv" id="tv">10</span></span>
+            <input type="range" id="top" min="5" max="15" step="1" value="10"></label>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <h2>내 입지</h2>
+          <p class="me" id="me-nm">—</p>
+          <div class="summary" id="me-sum"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>전국 지도 <span style="font-weight:400;text-transform:none;letter-spacing:0">· 점=행정동 · ◎=유사입지 · ★=내 입지</span></h2>
+        <canvas id="map" width="760" height="620" aria-label="전국 행정동 지도"></canvas>
+        <div class="legend">
+          <span><i style="background:var(--dot)"></i>행정동</span>
+          <span><i class="ring"></i>유사입지</span>
+          <span style="color:var(--fg);font-weight:700">★ 내 입지</span>
+        </div>
+      </div>
+
+      <div class="two fullrow">
+        <div class="card">
+          <h2>업종구성+인구 비슷한 전국 행정동</h2>
+          <div class="scroll-x"><table id="sim"><thead><tr>
+            <th>#</th><th>행정동</th><th>유사도</th><th>점포</th><th>인구</th><th>밀도</th>
+          </tr></thead><tbody></tbody></table></div>
+          <p class="note">행을 클릭하면 그 행정동으로 이동합니다. 유사도는 업종 구성과 인구 특성을 함께 반영합니다.</p>
+        </div>
+        <div class="card">
+          <h2>추천 업종 (기회)</h2>
+          <div class="scroll-x"><table id="rec"><thead><tr>
+            <th>#</th><th>업종</th><th>유사동평균</th><th>내 동</th><th>기회</th>
+          </tr></thead><tbody></tbody></table></div>
+          <p class="note">기회 = 유사한 동들엔 많은데 내 동엔 적은 업종(진입 여지). 단위 %.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (n, d = 0) => n == null ? "—" : Number(n).toLocaleString("ko-KR", { maximumFractionDigits: d, minimumFractionDigits: d });
+
+let D, NB, shares, normsArr, popZ, popAvail, MAP = null, cur = 0;
+const POP_LABELS = ["인구", "인구밀도", "평균연령", "종사자수", "노령화지수", "가구원수"];
+const LOG_IDX = new Set([0, 1, 3]);  // tot_ppltn, ppltn_dnsty, employee_cnt
+
+fetch("national_index.json").then(r => r.json()).then(data => { D = data; init(); })
+  .catch(e => { $("loading").textContent = "데이터를 불러오지 못했습니다: " + e; });
+
+function init() {
+  NB = D.biz.length;
+  const A = D.adong;
+  // 업종 구성 비중(밀집 벡터) + 노름
+  shares = A.map(a => {
+    const v = new Float64Array(NB);
+    let s = 0; for (let i = 0; i < a.bi.length; i++) { v[a.bi[i]] = a.bc[i]; s += a.bc[i]; }
+    if (s > 0) for (let i = 0; i < NB; i++) v[i] /= s;
+    return v;
+  });
+  normsArr = shares.map(v => { let s = 0; for (let i = 0; i < NB; i++) s += v[i] * v[i]; return Math.sqrt(s); });
+
+  // 인구 특성 표준화(규모형 로그 → z-score, 결측 동 제외)
+  const P = A.map(a => a.pop);
+  popAvail = P.map(p => p != null);
+  const cols = 6, sum = new Float64Array(cols), sm2 = new Float64Array(cols), cnt = new Float64Array(cols);
+  const tx = (k, x) => LOG_IDX.has(k) ? Math.log1p(x) : x;
+  P.forEach(p => { if (p) for (let k = 0; k < cols; k++) { const x = tx(k, p[k]); sum[k] += x; sm2[k] += x * x; cnt[k]++; } });
+  const mean = [], std = [];
+  for (let k = 0; k < cols; k++) { mean[k] = sum[k] / cnt[k]; std[k] = Math.sqrt(Math.max(sm2[k] / cnt[k] - mean[k] ** 2, 1e-9)) || 1; }
+  popZ = P.map(p => { if (!p) return null; const z = new Float64Array(cols); for (let k = 0; k < cols; k++) z[k] = (tx(k, p[k]) - mean[k]) / std[k]; return z; });
+
+  // 행정동 검색 목록
+  $("adongs").innerHTML = A.map((a, i) => `<option value="${a.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${a.sgg} ${a.nm}">`).join("");
+  $("meta").textContent = `전국 ${fmt(A.length)}개 행정동 · 업종중분류 ${NB}종 · 상가·인구 실데이터(소상공인시장진흥공단, 통계청 SGIS)`;
+
+  // 기본 선택: 역삼1동
+  cur = Math.max(0, A.findIndex(a => a.sgg === "강남구" && a.nm === "역삼1동"));
+  bindMap();
+  $("loading").hidden = true; $("app").hidden = false;
+  recompute();
+}
+
+function alpha() { return +$("alpha").value / 100; }
+
+function similar(t, k) {
+  const al = alpha(), tS = shares[t], tN = normsArr[t] || 1, tZ = popZ[t];
+  const sim = new Float64Array(D.adong.length);
+  for (let j = 0; j < D.adong.length; j++) {
+    let dot = 0; const sj = shares[j];
+    for (let i = 0; i < NB; i++) dot += tS[i] * sj[i];
+    const biz = (normsArr[j] && tN) ? dot / (normsArr[j] * tN) : 0;
+    if (tZ && popAvail[j]) {
+      let d = 0; const zj = popZ[j]; for (let m = 0; m < 6; m++) { const e = zj[m] - tZ[m]; d += e * e; }
+      sim[j] = al * biz + (1 - al) * (1 / (1 + Math.sqrt(d)));
+    } else if (tZ && !popAvail[j]) {
+      sim[j] = -Infinity;  // 대상에 인구 있음 → 인구 없는 후보 제외
+    } else sim[j] = biz;
+  }
+  const idx = Array.from(sim.keys()).filter(j => j !== t && sim[j] > -Infinity).sort((a, b) => sim[b] - sim[a]).slice(0, k);
+  return idx.map(j => ({ j, sim: sim[j] }));
+}
+
+function recommend(t, simIdx, topN) {
+  const avg = new Float64Array(NB);
+  simIdx.forEach(({ j }) => { const s = shares[j]; for (let i = 0; i < NB; i++) avg[i] += s[i]; });
+  const n = simIdx.length || 1;
+  const my = shares[t];
+  const rows = [];
+  for (let i = 0; i < NB; i++) rows.push({ b: D.biz[i], avg: avg[i] / n * 100, my: my[i] * 100 });
+  rows.forEach(r => r.opp = r.avg - r.my);
+  return rows.sort((a, b) => b.opp - a.opp).slice(0, topN);
+}
+
+function recompute() {
+  const A = D.adong, a = A[cur], k = +$("k").value, topN = +$("top").value;
+  $("search").value = `${a.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${a.sgg} ${a.nm}`;
+  // 내 입지 요약
+  $("me-nm").innerHTML = `${a.nm} <small>${a.sido} ${a.sgg}</small>`;
+  const tiles = [["점포수", fmt(a.sc) + "개"]];
+  if (a.pop) {
+    tiles.push(["인구", fmt(a.pop[0])], ["인구밀도", fmt(a.pop[1])], ["평균연령", fmt(a.pop[2], 1)],
+      ["종사자수", fmt(a.pop[3])], ["노령화지수", fmt(a.pop[4], 1)]);
+  } else tiles.push(["인구", "(미수록)"]);
+  $("me-sum").innerHTML = tiles.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  const sim = similar(cur, k);
+  const mx = sim.length ? sim[0].sim : 1;
+  $("sim").querySelector("tbody").innerHTML = sim.map((s, i) => {
+    const o = A[s.j], pct = Math.round(s.sim / mx * 100);
+    return `<tr class="clk" data-j="${s.j}"><td>${i + 1}</td>
+      <td>${o.nm}<br><small style="color:var(--muted)">${o.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${o.sgg}</small></td>
+      <td><span class="bar-wrap"><span class="bar" style="width:${Math.max(6, pct * 0.7)}px"></span></span> ${s.sim.toFixed(3)}</td>
+      <td>${fmt(o.sc)}</td><td>${o.pop ? fmt(o.pop[0]) : "—"}</td><td>${o.pop ? fmt(o.pop[1]) : "—"}</td></tr>`;
+  }).join("");
+  $("sim").querySelectorAll("tr.clk").forEach(tr => tr.addEventListener("click", () => { cur = +tr.dataset.j; recompute(); }));
+
+  const rec = recommend(cur, sim, topN);
+  $("rec").querySelector("tbody").innerHTML = rec.map((r, i) =>
+    `<tr><td>${i + 1}</td><td>${r.b.trim()}</td><td>${r.avg.toFixed(2)}</td><td>${r.my.toFixed(2)}</td>
+     <td style="color:${r.opp > 0 ? 'var(--good)' : 'var(--muted)'};font-weight:600">${r.opp > 0 ? '+' : ''}${r.opp.toFixed(2)}</td></tr>`).join("");
+
+  drawMap(sim.map(s => s.j));
+}
+
+function drawMap(simJ) {
+  const cv = $("map"), ctx = cv.getContext("2d"), A = D.adong;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = cv.clientWidth, H = Math.round(W * 0.82);
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const lons = A.map(a => a.lon), lats = A.map(a => a.lat), pad = 16;
+  const minx = Math.min(...lons), maxx = Math.max(...lons), miny = Math.min(...lats), maxy = Math.max(...lats);
+  const sx = x => pad + (x - minx) / (maxx - minx) * (W - 2 * pad);
+  const sy = y => H - pad - (y - miny) / (maxy - miny) * (H - 2 * pad);
+  MAP = { sx, sy };
+  ctx.fillStyle = cssv("--dot"); ctx.globalAlpha = .5;
+  for (const a of A) { ctx.beginPath(); ctx.arc(sx(a.lon), sy(a.lat), 1.3, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1; ctx.strokeStyle = cssv("--accent"); ctx.lineWidth = 2;
+  for (const j of simJ) { ctx.beginPath(); ctx.arc(sx(A[j].lon), sy(A[j].lat), 6, 0, 7); ctx.stroke(); }
+  const me = A[cur]; ctx.fillStyle = cssv("--fg"); ctx.font = "700 19px " + cssv("--font-ui");
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("★", sx(me.lon), sy(me.lat));
+}
+
+function bindMap() {
+  $("map").addEventListener("click", e => {
+    if (!MAP) return;
+    const r = e.currentTarget.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    let best = 0, bd = Infinity;
+    D.adong.forEach((a, i) => { const dx = MAP.sx(a.lon) - px, dy = MAP.sy(a.lat) - py, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } });
+    cur = best; recompute();
+  });
+  $("search").addEventListener("change", e => {
+    const v = e.target.value.trim();
+    const i = D.adong.findIndex(a => `${a.sido.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "")} ${a.sgg} ${a.nm}` === v);
+    if (i >= 0) { cur = i; recompute(); }
+  });
+  $("alpha").addEventListener("input", e => {
+    const a = +e.target.value; $("av").textContent = `업종${a} · 인구${100 - a}`; recompute();
+  });
+  $("k").addEventListener("input", e => { $("kv").textContent = e.target.value; recompute(); });
+  $("top").addEventListener("input", e => { $("tv").textContent = e.target.value; recompute(); });
+  window.addEventListener("resize", () => { if (D) drawMap(similar(cur, +$("k").value).map(s => s.j)); });
+}
+</script>
