@@ -23,6 +23,8 @@ def main():
     p.add_argument("--lon", type=float, default=None)
     p.add_argument("--k", type=int, default=10, help="유사 행정동 수")
     p.add_argument("--top", type=int, default=12, help="추천 업종 수")
+    p.add_argument("--alpha", type=float, default=0.6,
+                   help="유사도 중 업종구성 가중(0~1). 나머지는 인구특성. (기본 0.6)")
     args = p.parse_args()
 
     if args.address:
@@ -44,8 +46,8 @@ def main():
     if extra:
         print("  " + " · ".join(extra))
 
-    sim = idx.similar(cd, k=args.k)
-    print(f"\n=== 업종 구성이 비슷한 전국 행정동 Top {len(sim)} ===")
+    sim = idx.similar(cd, k=args.k, alpha=args.alpha)
+    print(f"\n=== 업종구성+인구 비슷한 전국 행정동 Top {len(sim)} (α={args.alpha}) ===")
     print(sim.to_string(index=False) if not sim.empty else "  (유사 행정동 없음)")
 
     rec = idx.recommend(cd, sim, top_n=args.top)
